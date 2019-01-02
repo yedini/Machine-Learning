@@ -1,0 +1,141 @@
+#step1. collecting data
+#step2. exploring and preparing the data
+> wbcd <- read.csv("wisc_bc_data.csv")
+> str(wbcd)
+> wbcd <- wbcd[,-1]
+> table(wbcd$diagnosis)
+
+  B   M 
+357 212 
+> wbcd$diagnosis <- factor(wbcd$diagnosis, levels=c("B","M"), labels= c("Benign", "Malignant"))
+> round(prop.table(table(wbcd$diagnosis))*100, digits=1)
+
+   Benign Malignant 
+     62.7      37.3 
+
+> summary(wbcd[c("radius_mean", "area_mean", "smoothness_mean")])
+  radius_mean       area_mean      smoothness_mean  
+ Min.   : 6.981   Min.   : 143.5   Min.   :0.05263  
+ 1st Qu.:11.700   1st Qu.: 420.3   1st Qu.:0.08637  
+ Median :13.370   Median : 551.1   Median :0.09587  
+ Mean   :14.127   Mean   : 654.9   Mean   :0.09636  
+ 3rd Qu.:15.780   3rd Qu.: 782.7   3rd Qu.:0.10530  
+ Max.   :28.110   Max.   :2501.0   Max.   :0.16340  
+> #변수마다 scale의 차이가 크느므로 rescaling 필요!!
+
+> #normalizing function 만들기
+> normalize <- function(x) {
++ print((x-min(x))/(max(x)-min(x)))
++ }
+> normalize(c(1,2,3,4,5))
+[1] 0.00 0.25 0.50 0.75 1.00
+> normalize(c(10,20,30,40,50))
+[1] 0.00 0.25 0.50 0.75 1.00
+> # -> 단위에 상관없이 데이터간의 차이에 따라 rescaling 된다! (min-max normalization)
+
+> #wbcd 데이터 normalize 하기
+>wbcd_n <- as.data.frame(lapply(wbcd[,2:31], normalize))
+
+ summary(wbcd_n$area_mean)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.0000  0.1174  0.1729  0.2169  0.2711  1.0000 
+# -> 원래 백단위였는데 0부터 1까지로 정규화되었다
+
+> #training dataset과 test dataset 나누기
+> wbcd_train <- wbcd_n[1:469,]
+> wbcd_test <- wbcd_n[470:569,]
+
+> wbcd_train_labels <- wbcd[1:469,1]
+> wbcd_test_labels <- wbcd[470:569,1]
+
+#step3. training a model on the data
+
+> # knn function in class package
+> # knn(train=train data set, test= test data set, class=factor, k=number of nearest neighbors)
+> wbcd_test_pred <- knn(train=wbcd_train, test=wbcd_test, cl=wbcd_train_labels, k=21)
+> head(wbcd_test_pred)
+[1] Benign    Benign    Benign    Benign    Malignant Benign   
+Levels: Benign Malignant
+> #knn 함수는 test records의 predicted label에 대한 factor를 출력함.
+
+#step4. evaluating model performance
+#knn 알고리즘을 통해 얻은 prediction vector와 실제 label인 wbcd_test_lable이 얼마나 잘 맞는지 확인한다.
+#CrossTable 사용 (gmodels 패키지)
+
+> CrossTable(x=wbcd_test_labels, y=wbcd_test_pred, prop.chisq=FALSE)
+
+ 
+   Cell Contents
+|-------------------------|
+|                       N |
+|           N / Row Total |
+|           N / Col Total |
+|         N / Table Total |
+|-------------------------|
+
+ 
+Total Observations in Table:  100 
+
+ 
+                 | wbcd_test_pred 
+wbcd_test_labels |    Benign | Malignant | Row Total | 
+-----------------|-----------|-----------|-----------|
+          Benign |        61 |         0 |        61 | 
+                 |     1.000 |     0.000 |     0.610 | 
+                 |     0.968 |     0.000 |           | 
+                 |     0.610 |     0.000 |           | 
+-----------------|-----------|-----------|-----------|
+       Malignant |         2 |        37 |        39 | 
+                 |     0.051 |     0.949 |     0.390 | 
+                 |     0.032 |     1.000 |           | 
+                 |     0.020 |     0.370 |           | 
+-----------------|-----------|-----------|-----------|
+    Column Total |        63 |        37 |       100 | 
+                 |     0.630 |     0.370 |           | 
+-----------------|-----------|-----------|-----------|
+# 100개중에 2개는 Benign이지만 Malignant로 예측. 98퍼센트의 예측률을 보인다고 볼 수 있다.
+
+#step5. improving model performance
+#transformation: z-score standardization
+
+> wbcd_z <- as.data.frame(scale(wbcd[-1]))
+> summary(wbcd_z$area_mean)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+-1.4532 -0.6666 -0.2949  0.0000  0.3632  5.2459 
+> wbcd_train_ <- wbcd_z[1:469,]
+> wbcd_test <- wbcd_z[470:569,]
+> wbcd_train_lables <- wbcd[1:469,1]
+> wbcd_test_lables <- wbcd[470:569,1]
+> wbcd_test_pred <- knn(train=wbcd_train_, test=wbcd_test, cl=wbcd_train_lables, k=21)
+> CrossTable(x=wbcd_test_lables, y=wbcd_test_pred, prop.chisq=FALSE)
+
+ 
+   Cell Contents
+|-------------------------|
+|                       N |
+|           N / Row Total |
+|           N / Col Total |
+|         N / Table Total |
+|-------------------------|
+
+ 
+Total Observations in Table:  100 
+
+ 
+                 | wbcd_test_pred 
+wbcd_test_lables |    Benign | Malignant | Row Total | 
+-----------------|-----------|-----------|-----------|
+          Benign |        61 |         0 |        61 | 
+                 |     1.000 |     0.000 |     0.610 | 
+                 |     0.924 |     0.000 |           | 
+                 |     0.610 |     0.000 |           | 
+-----------------|-----------|-----------|-----------|
+       Malignant |         5 |        34 |        39 | 
+                 |     0.128 |     0.872 |     0.390 | 
+                 |     0.076 |     1.000 |           | 
+                 |     0.050 |     0.340 |           | 
+-----------------|-----------|-----------|-----------|
+    Column Total |        66 |        34 |       100 | 
+                 |     0.660 |     0.340 |           | 
+-----------------|-----------|-----------|-----------|
+#이 경우 95의 확률로 예측이 맞으므로 normalization하는게 더 낫다
