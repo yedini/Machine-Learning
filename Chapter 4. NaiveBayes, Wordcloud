@@ -1,0 +1,138 @@
+#텍스트마이닝 할 때 설정해줘야 할 두 가지
+Sys.setlocale(category='LC_ALL')
+options(stringsAsFactors=F)
+#문자열을 factor로 불러들여와서 그것을 막기 위해 stringsAsFactor를 넣어줘야 함.
+
+
+#Step 1. Collecting data
+ -> data of the text of SMS messages along with a label
+
+#Step 2. Exploring and preparing the data
+
+> sms_raw <- read.csv("sms_spam.csv", stringsAsFactors = FALSE)
+> str(sms_raw)
+'data.frame':	5559 obs. of  2 variables:
+ $ type: chr  "ham" "ham" "ham" "spam" ...
+ $ text: chr  "Hope you are having a good week. Just checking in" "K..give back my thanks." "Am also doing in cbe only. But have to pay." "complimentary 4 STAR Ibiza Holiday or 짙10,000 cash needs your URGENT collection. 09066364349 NOW from Landline not to lose out ...
+#두 변수 모두 character variable이지만, type이 categorial variable이므로
+#type 변수를 factor화 시켜준다.
+> sms_raw$type <- factor(sms_raw$type)
+> str(sms_raw)
+'data.frame':	5559 obs. of  2 variables:
+ $ type: Factor w/ 2 levels "ham","spam": 1 1 1 2 2 1 1 1 2 1 ...
+ $ text: chr  "Hope you are having a good week. Just checking in" "K..give back my thanks." "Am also doing in cbe only. But have to pay." "complimentary 4 STAR Ibiza Holiday or 짙10,000 cash needs your URGENT collection. 09066364349 NOW from Landline not to lose out ...
+
+> table(sms_raw$type)
+
+ ham spam 
+4812  747
+
+#Data preparation- cleaning and standardizing text data
+#tm 패키지: text mining package
+> install.packages("tm")
+> library(tm)
+#corpus(말뭉치) 만들기 : collection of SMS message 생성 -> VCorpus함수 사용.
+sms_raw$text <- iconv(enc2utf8(sms_raw$text),sub="byte")
+> sms_corpus <- VCorpus(VectorSource(sms_raw$text))
+# : corpus를 만들건데 text collection의 원 데이터는 sms_raw$text에서 가져온다
+#여기서 V : 가변적이라는 의미. 그냥 Coprus해도 상관없ㅇ음
+#벡터가 아니라 데이터프레임에 있는 걸 끌어들일경우 DataframeSource 이요
+
+> print(sms_corpus)
+<<VCorpus>>
+Metadata:  corpus specific: 0, document level (indexed): 0
+Content:  documents: 5559
+
+#특정 메세지에 대한 요약 보기 : inspect() 함수
+> inspect(sms_corpus[1:2])
+<<VCorpus>>
+Metadata:  corpus specific: 0, document level (indexed): 0
+Content:  documents: 2
+
+[[1]]
+<<PlainTextDocument>>
+Metadata:  7
+Content:  chars: 49
+
+[[2]]
+<<PlainTextDocument>>
+Metadata:  7
+Content:  chars: 23
+#실제 데이터를 보고싶으면 as.character() 함수를 사용
+> as.character(sms_corpus[[1]])
+[1] "Hope you are having a good week. Just checking in"
+> lapply(sms_corpus[1:2], as.character)
+$`1`
+[1] "Hope you are having a good week. Just checking in"
+
+$`2`
+[1] "K..give back my thanks."
+
+#생 데이터들을 깔끔하게 만들어 standardize 하는 과정이 필요함
+# transformation 또는 mapping 시행 by tm_map() 함수
+
+#tolower를 먼저 해서 소문자로 만들어주는 것이 중요함. 순서도 중요하다!
+> sms_corpus_clean <- tm_map(sms_corpus, content_transformer(tolower))
+> sms_corpus_clean <- tm_map(sms_corpus_clean, removeNumbers)
+> as.character(sms_corpus_clean[[1]])
+[1] "hope you are having a good week. just checking in"
+> sms_corpus_clean <- tm_map(sms_corpus_clean, removeWords, stopwords())
+> sms_corpus_clean <- tm_map(sms_corpus_clean, removePunctuation)
+#removepunctuation쓰면 trips punctuation character들이 블라인드처리됨.
+> removePunctuation("hello...world")
+[1] "helloworld"
+
+#stemming : 뿌리 단어로 줄여주는 한 방법. 예)learning, learned를 다 learn으로 변환시켜줌.
+
+> install.packages("SnowballC")
+> library(SnowballC)
+#SnowballC의 wordStem() : 단어들의 root form을 출력
+> wordStem(c("learn", "learning"))
+[1] "learn" "learn"
+> sms_corpus_clean <- tm_map(sms_corpus_clean, stemDocument)
+#공백 지우기
+> sms_corpus_clean <- tm_map(sms_corpus_clean, stripWhitespace)
+
+#Data preparation - splitting text documents into words
+#tokenization : text를 single string으로 만듦. 여기서 toked=word
+
+
+sms_dtm <- DocumentTermMatrix(sms_corpus_clean)
+sms_dtm2 <- DocumentTermMatrix(sms_corpus, control=list(tolower=TRUE,
+                                                        removeNumbers=TRUE,
+                                                        stopwords=TRUE,
+                                                        removePunctuation=TRUE,
+                                                        stemming=TRUE))
+sms_dtm
+sms_dtm2
+sms_dtm_train <- sms_dtm[1:4169,]
+sms_dtm_test <- sms_dtm[4170:5559,]
+sms_train_labels <- sms_raw[1:4169,]$type
+sms_test_labels <- sms_raw[4170:5559,]$type
+
+prop.table(table(sms_train_labels))
+prop.table(table(sms_test_labels))
+
+library(wordcloud)
+wordcloud(sms_corpus_clean, min.freq=50, random.order=FALSE)
+
+#ham과 spam 나눠서 wordcloud 만들기
+spam <- subset(sms_raw, type=="spam")
+ham <- subset(sms_raw, type=="ham")
+
+wordcloud(spam$text, max.words=40, scale=c(3,0.5))
+wordcloud(ham$text, max.words=40, scale=c(3,0.5))
+
+findFreqTerms(sms_dtm_train, 5)
+sms_freq_words <- findFreqTerms(sms_dtm_train, 5)
+sms_dtm_freq_train <- sms_dtm_train[, sms_freq_words]
+sms_dtm_freq_test <- sms_dtm_test[, sms_freq_words]
+
+convert_counts <- function(X) {
+  x <- ifelse(x>0, "Yes", "No")
+}
+
+sms_train <- apply(sms_dtm_freq_train, MARGIN=2, convert_counts)
+sms_test <- apply(sms_dtm_freq_test, MARGIN=2, convert_counts
+				  
+				  sms_classifier <- naiveBayes(sms_train, sms_train_labels)
