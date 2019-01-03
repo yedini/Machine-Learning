@@ -1,0 +1,90 @@
+####Decision Tree####
+#종류:y가 이산형이면 분류나무, 연속형이면 회귀 나무로 나누어짐.
+#분류기준: 엔트로피 지수, 지니지수
+#엔트로피 지수: 하나의 노드의 구성이 얼마나 이질적으로 구성되었나를 본다. 
+#하나의 노드가 엔트로피 지수를 가짐.
+#작을수록 잘 분류되었다고 볼 수 있음
+#정보 이익: 처음 섞인 데이터에서 분류 후 잘 분류된 데이터의 엔트로피의 차이. 이 값이 클 수록 잘 분류되었다고 볼 수 있음.
+#지니지수 또한 작을수록 좋다 
+#비모수적 모형이기 때문에 선형성, 정규성 등의 수학적 가정이 불필요함.
+#비연속성 존재(ex.500보다 크면 강수량이 많다고 분류할 때, 501과 499가 다르게 분류되는 점
+#단점 개선 -> 앙상블 모형 중 랜덤 포레스트 사용
+#랜덤 포레스트: 랜덤하게 여러개의 트리를 만듦.
+
+
+####Rule Learner####
+#최적의 분류기준을 찾는 알고리즘
+#1R 알고리즘: 한개의 기준을 가지고 분류
+#RIPPER 알고리즘: 데이터를 잘 나눌 수 있는 여러개의 규칙 찾기 -> 1R보다 에러가 줄어듦.
+
+credit <- read.csv("credit.csv")
+
+str(credit)
+table(credit$checking_balance)
+table(credit$savings_balance)
+summary(credit$months_loan_duration)
+summary(credit$amount)
+table(credit$default)
+
+set.seed(123)
+train_sample <- sample(1000,900)
+credit_train <- credit[train_sample,]
+credit_test <- credit[-train_sample,]
+
+prop.table(table(credit_train$default))
+prop.table(table(credit_test$default))
+
+install.packages("C50")
+library(C50)
+
+credit_model <- C5.0(credit_train[,-17], credit_train$default)
+credit_model
+summary(credit_model)
+
+credit_pred <- predict(credit_model, credit_test)
+
+library(gmodels)
+CrossTable(credit_test$default, credit_pred, prop.chisq=FALSE, prop.c=FALSE, prop.r=FALSE, 
+           dnn=c('actual default', 'predicted default'))
+
+#Boosting
+credit_boost10 <- C5.0(credit_train[,-17], credit_train$default, trials=10)
+credit_boost10
+summary(credit_boost10)
+
+credit_boost_pred10 <- predict(credit_boost10, credit_test)
+CrossTable(credit_test$default, credit_boost_pred10, prop.chisq=FALSE, prop.c=FALSE, prop.r=FALSE,
+           dnn=c("actual default", 'predicted default'))
+
+
+#cost matrix
+matrix_dimensions <- list(c("no", "yes"), c("no", "yes"))
+names(matrix_dimensions) <- c("predicted", "actual")
+matrix_dimensions
+error_cost <- matrix(c(0,1,4,0), nrow=2, dimnames=matrix_dimensions)
+error_cost
+credit_cost <- C5.0(credit_train[,-17], credit_train$default, costs=error_cost)
+credit_cost_pred <- predict(credit_cost, credit_test)
+CrossTable(credit_test$default, credit_cost_pred, prop.chisq = FALSE, prop.c=FALSE, prop.r=FALSE,
+           dnn=c('actual default', 'predicted default'))
+
+
+##rule learner example##
+mushrooms <- read.csv("mushrooms.csv", stringsAsFactors = TRUE) ##stringsAsFactors하면 전부 자동으로 팩터화
+str(mushrooms)
+#변수들 중 veil_type의 경우 level이 하나만 있어 부정확한 변수로 판단하고 drop시킴.
+mushrooms$veil_type <- NULL
+table(mushrooms$type)
+
+#use 1R algorithm
+install.packages("RWeka")
+library(rJava)
+library(RWeka)
+
+#모든 변수들에 대하여 type 분류하기
+mushroom_1R <- OneR(type~., data=mushrooms)
+mushroom_1R
+
+summary(mushroom_1R)
+mushroom_JRip <- JRip(type~., data=mushrooms)
+mushromo_JRip
