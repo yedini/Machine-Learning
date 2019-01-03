@@ -1,0 +1,102 @@
+
+
+launch <- read.csv('challenger.csv')
+str(launch)
+reg <- function(y, x) {
+  x <- as.matrix(x)
+  x <- cbind(Intercept=1, x)
+  b <- solve(t(x)%*%x) %*% t(x) %*%y
+  colnames(b) <-"estimate"
+  print(b)
+}
+
+reg(y=launch$distress_ct, x=launch[3])
+
+reg(y=launch$distress_ct, x=launch[3:5])
+
+insurance <- read.csv('insurance.csv', stringsAsFactors = TRUE)
+str(insurance)
+colnames(insurance)[7] <- "expenses"
+table(insurance$region)
+#factor를 제외한 predictor 변수들의 상관성 확인 (multicolinearity 방지)
+# cor(data명[c('변수1', '변수2', .... '변수n')]) : n개의 변수의 상관성 확인
+cor(insurance[c('age','bmi','children','expenses')])
+
+#변수간의 상관성들을 시각화해서 한꺼번에 보여줌.
+pairs(insurance[c('age','bmi','children','expenses')])
+
+#pairs.panels : pair함수보다 좀 더 자세한 정보들을 제공함. 
+#correlation ellipse: 원형일수록 상관성이 작고, 타원형일수록 상관성이 커짐.
+library(psych)
+pairs.panels(insurance[c('age','bmi','children','expenses')])
+
+ins_model <- lm(expenses~age+children+bmi+sex+smoker+region, data=insurance)
+ins_model
+summary(ins_model)
+
+#model specification
+#polynomial variable 형성
+insurance$age2 <- insurance$age^2
+#numeric한 bmi 데이터를 30이상일 경우에만 비만으로, 아니면 0으로 보고 numeric data를 binary data로 바꿔줌.
+insurance$bmi30 <- ifelse(insurance$bmi >= 30,1,0)
+#bmi30과 smoker의 interaction effect도 같이 확인.
+ins_model2 <- lm(expenses~ age+age2+children+bmi+sex+bmi30*smoker+region, data=insurance)
+summary(ins_model2)
+
+#추가적인 modification
+#update 함수: 앞에서 결과값을 보고 필요없다고 판단되는 변수를 빼서 새로 분석해줌.
+#사용방식: update(regression data명, .~,-뺄data명)
+#step 함수: 기존 변수에서 변수 하나하나씩 뺐을 때의 결과값을 보여줌.
+#사용방식 : step(regression data명)
+
+wine <- read.csv('whitewines.csv')
+str(wine)
+hist(wine$quality)
+wine_train <- wine[1:3750,]
+wine_test <- wine[3751:4898,]
+
+#rpart: 회귀나무 생성 함수. rpart(d.v~., data=data명)
+install.packages("rpart")
+library(rpart)
+m.rpart <- rpart(quality~., data=wine_train)
+m.rpart
+#rpart에서 * : 최종 노드를 의미
+#가장 첫번째로 나오는 변수: 회귀나무에서 가장 중요한 변수
+
+#회귀나무를 rpart.plot을 통해 시각화
+install.packages('rpart.plot')
+library(rpart.plot)
+rpart.plot(m.rpart, digits=3)
+#fallen.leaves 인자: 예측값들을 맨 밑에 일렬로 나열하고 싶을 때 사용
+rpart.plot(m.rpart, digits=4, fallen.leaves = TRUE, type=3, extra=101)
+
+#예측에 regressiont tree 이용
+p.rpart <- predict(m.rpart, wine_test)
+summary(p.rpart)
+cor(p.rpart, wine_test$quality)
+#cor값이 0.5 정도 -> 예측력이 나쁘지 않다
+
+#예측값과 실제값이 얼마나 크게 다른지 알아보기 위한 방법 : MAE 사용 (mean absolute error)
+MAE <- function(actual, predicted) {
+  mean(abs(actual-predicted))
+}
+MAE(p.rpart, wine_test$quality)
+#MAE는 0부터 10까지: 작을수록 좋음
+
+#모델 성능 개선-> 모델트리 구축 : 잎 노드를 회귀 모델로 대체함으로써 회귀 트리를 개선함.
+#노드가 선형 모델이 됨 (회귀트리는 잎노드에서 하나의 값만 수치 사용하고 수치 예측으로 끝남)
+library(RWeka)
+m.m5p <- M5P(quality~., data=wine_train)
+m.m5p
+#선형모델의 적합성 확인
+summary(m.m5p)
+p.m5p <- predict(m.m5p, wine_test)
+summary(p.m5p)
+cor(p.m5p, wine_test$quality)
+MAE(wine_test$quality, p.m5p)
+
+##의사결정나무 결정 패키지: tree, rpart, party
+
+####가지치기####
+#CP값을 이용한 사전 가지치기
+CP: 가지치기를 하는데 있어서 최소한의 benefit
