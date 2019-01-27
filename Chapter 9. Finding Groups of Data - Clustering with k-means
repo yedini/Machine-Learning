@@ -1,0 +1,83 @@
+###Chapter 9. Finding Groups of Data - Clustering with k-means###
+
+##exploring and preparing the data
+
+teens <- read.csv("snsdata.csv")
+str(teens)
+#gender에 NA값이 있음을 확인할 수 있음.
+table(teens$gender)
+#table함수를 쓸 경우 NA값은 제외하는데 table쓸때 useNA="ifany"를 쓰면 NA값도 몇 갠지 볼 수 있음.
+table(teens$gender, useNA="ifany")
+
+#age에도 NA값이 있음을 확인
+summary(teens$age)
+#-> NA값도 있고 심지어 min은 3이고 max는 106 -> 전처리 필요
+#13~20세만 teen으로 설정하고 나머지는 NA값으로 설정.
+teens$age <- ifelse(teens$age >=13 & teens$age <20, teens$age, NA)
+summary(teens$age)
+
+#data preparation - dummy coding missing values
+#NA값이 있는 데이터를 모두 제외할 경우 많은 데이터를 잃을 수 있으므로,
+#gender 변수의 NA값들을 no_gender라는 하나의 class로 아예 취급하고 dummy coding을 만듦.
+teens$female <- ifelse(teens$gender=="F" &
+                         !is.na(teens$gender), 1, 0)
+teens$no_gender <- ifelse(is.na(teens$gender),1, 0)
+
+# 잘 됐는지 확인
+table(teens$gender, useNA="ifany")
+table(teens$female, useNA="ifany")
+table(teens$no_gender, useNA="ifany")
+
+#data preparation - imputing the missing values
+#NA가 존재하는데 numeric인 경우 dummy coding이 불가능 
+# -> NA자리에 해당 변수의 대표값을 대신 넣어줌 (ex. 평균이나 중간값 등등)
+mean(teens$age)
+mean(teens$age, na.rm=T)
+
+#각 gradyear마다의 나이의 평균 구하기 -> aggregate 함수 이용!
+aggregate(data=teens, age~gradyear, mean, na.rm=T)
+#aggregate함수의 경우 결과를 data.frame으로 출력함.
+#ave 함수의 경우 각 그룹의 평균을 vector로 출력 => 결과의 길이가 original vector와 같음.
+ave_age <- ave(teens$age, teens$gradyear, FUN=function(x) mean(x, na.rm=T))
+
+#NA값에 ave_age값 넣기
+teens$age <- ifelse(is.na(teens$age), ave_age, teens$age)
+summary(teens$age)
+
+
+##training a model on the data
+
+library(stats)
+# k-means 함수 : kmeans(data, k)
+
+interests <- teens[5:40]
+#정규화
+interests_z <- as.data.frame(lapply(interests, scale))
+
+set.seed(2345)
+teen_clusters <- kmeans(interests_z, 5)
+
+
+##evaluating model performance
+
+#clustering된 그룹 내 데이터갯수 차이가 많이 나면 잘 안된거라고 볼 수 있다.
+teen_clusters$size
+[1]   871   600  5981  1034 21514
+
+#cluster의 centroid를 확인해보기
+teen_clusters$centers
+basketball   football      soccer    softball  
+1  0.16001227  0.2364174  0.10385512  0.07232021  
+2 -0.09195886  0.0652625 -0.09932124 -0.01739428 
+3  0.52755083  0.4873480  0.29778605  0.37178877  
+4  0.34081039  0.3593965  0.12722250  0.16384661  
+5 -0.16695523 -0.1641499 -0.09033520 -0.11367669
+#football column에서 세번째 행이 가장 높은 숫자 
+#-> 3번째 cluster가 basketball에서 가장 높은 평균 interest다.
+
+##improving model performance
+teens$cluster <-teen_clusters$cluster
+teens[1:5, c("cluster", "gender", "age", "friends")]
+aggregate(data=teens, age~cluster, mean)
+aggregate(data=teens, female~cluster, mean)
+aggregate(data=teens, friends~cluster, mean)
