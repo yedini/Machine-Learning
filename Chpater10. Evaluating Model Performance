@@ -1,0 +1,149 @@
+###Chpater10. Evaluating Model Performance###
+
+
+
+##using confusion matrices
+sms_results <- read.csv("sms_results.csv")
+
+head(sms_results)
+
+head(subset(sms_results, prob_spam>0.4 & prob_spam<0.6))
+
+head(subset(sms_results, actual_type != predict_type))
+
+table(sms_results$actual_type, sms_results$predict_type)
+
+library(gmodels)
+CrossTable(sms_results$actual_type, sms_results$predict_type)
+
+#accuracy rate (TP+TN) / (TP+FP+TN+FN)
+(1203+152)/(1203+4+31+152)
+
+#error rate (FP+FN) / (TP+FP+TN+FN)
+(4+31)/(1203+4+31+152)
+
+
+##caret package
+library(caret)
+confusionMatrix(sms_results$predict_type, sms_results$actual_type,
+                positive="spam")
+
+
+
+
+##Kappa statistics : 동일한 측정 대상에 대해 평가 결과의 일치도를 나타냄. (0,1), 클수록 좋음.
+
+#직접 구하는 방법
+pr_a <- 0.865+0.109
+pr_a # = accuracy값과 같다.
+#pr_e = (actual=ham)*(predicted=ham) + (actual=spam)*(predicted=spam)
+pr_e <- 0.888*0.868+0.112*0.132
+pr_e
+kappa <- (pr_a-pr_e)/(1-pr_e)
+kappa
+[1] 0.8787494 #very good agreement!
+
+#vcd 패키지 -> kappa() function 이용
+install.packages("vcd")
+library(vcd)
+Kappa(table(sms_results$actual_type, sms_results$predict_type)) # unweightes Kappa
+
+#irr(Inter-Rater Reliability) 패키지 -> Kappa2() function 이용
+install.packages("irr")
+library(irr)
+kappa2(sms_results[1:2])
+
+
+
+##Sensitivity and Specificity
+
+#직접 구하기
+sens <- 152/(152+31)
+spec <- 1203/(1203+4)
+sens; spec
+
+#caret package 이용하기
+sensitivity(sms_results$predict_type, sms_results$actual_type, positive="spam")
+specificity(sms_results$predict_type, sms_results$actual_type, negative="ham")
+
+
+
+##Precision and recall
+
+#precision(=Positive Predictive value) : positive 라고 예측한 것 중 진짜 positive한 경우
+#recall : 실제가 positive한 것 중 positive하다고 예측한 경우. (=sensitivity)
+
+#직접 구하기
+prec <- 152/(152+4)
+rec <- 152/(152+31)
+prec ; rec
+
+#caret 패키지 이용하기
+posPredValue(sms_results$predict_type, sms_results$actual_type, positive="spam")
+#recall은 sensitivity 구한 함수로 구한다.
+
+
+
+##F-measure(=F1 score= F-score)
+
+#precision과 recall의 조화평균 : 여러 모델들을 하나의 값으로 편하게 볼 수 있으나 precision과 recall에 같은 weight가 부과됨.
+# F-measure= (2*precision*recall)/(recall+precision) = (2*TP)/(2TP+FP+FN)
+
+#직접 구하기
+f <- (2*prec*rec)/(prec+rec)
+f
+
+
+
+##Visualization- ROCR package
+install.packages("ROCR")
+library(ROCR)
+pred <- prediction(predictions = sms_results$prob_spam,
+                   labels=sms_results$actual_type)
+
+##ROC curve
+perf <- performance(pred, measure="tpr", x.measure="fpr")
+plot(perf, main="ROC curve for SMS spam filter", col="blue", lwd=3)
+abline(a=0, b=1, lwd=2, lty=2)
+
+perf.auc <- performance(pred, measure="auc")
+str(perf.auc)
+unlist(perf.auc@y.values)
+
+
+#validation dataset
+credit <- read.csv("credit.csv")
+random_ids <- order(runif(1000))
+credit_train <- credit[random_ids[1:500],]
+credit_validate <- credit[random_ids[501:750],]
+credit_test <- credit[random_ids[751:1000],]
+
+in_train <- createDataPartition(credit$default, p=0.75,
+                                list=FALSE)
+credit_train <- credit[in_train,]
+credit_test <- credit[-in_train,]
+
+
+##Cross-validation
+folds <- createFolds(credit$default, k=10)
+str(folds)
+credit01_test <- credit[folds$Fold01,]
+credit01_train <- credit[-folds$Fold01,]
+
+library(C50)
+library(irr)
+
+set.seed(123)
+folds <- createFolds(credit$default, k=10)
+cv_results <- lapply(folds, function(x) {
+  credit_train <- credit[-x,]
+  credit_test <- credit[x,]
+  credit_model <- C5.0(default~., data=credit_train)
+  credit_pred <- predict(credit_model, credit_test)
+  credit_actual <- credit_test$default
+  kappa <- kappa2(data.frame(credit_actual, credit_pred))$value
+  return(kappa)
+})
+
+str(cv_results)
+mean(unlist(cv_results))
