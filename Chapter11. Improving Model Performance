@@ -1,0 +1,105 @@
+###Chapter11. Improving Model Performance
+
+#Simple tuned model : caret의 default setting 이용
+credit <- read.csv("credit.csv")
+modelLookup("C5.0")
+modelLookup("rpart")
+
+
+##creating a simple tuned model (Using the caret package's default settings)
+
+library(caret)
+set.seed(300)
+m <- train(default~., data=credit, method="C5.0")
+m
+C5.0 
+
+1000 samples   # A brief description of the input dataset
+16 predictor
+2 classes: 'no', 'yes' 
+
+No pre-processing   # A report of the preprocessing and resampling methods applied
+Resampling: Bootstrapped (25 reps) 
+Summary of sample sizes: 1000, 1000, 1000, 1000, 1000, 1000, ... 
+Resampling results across tuning parameters:
+  
+  model  winnow  trials  Accuracy   Kappa       # A list of the candidate modes evaluated
+rules  FALSE    1      0.6960037  0.2750983
+rules  FALSE   10      0.7147884  0.3181988
+rules  FALSE   20      0.7233793  0.3342634
+rules   TRUE    1      0.6849914  0.2513442
+rules   TRUE   10      0.7126357  0.3156326
+rules   TRUE   20      0.7225179  0.3342797
+tree   FALSE    1      0.6888248  0.2487963
+tree   FALSE   10      0.7310421  0.3148572
+tree   FALSE   20      0.7362375  0.3271043
+tree    TRUE    1      0.6814831  0.2317101
+tree    TRUE   10      0.7285510  0.3093354
+tree    TRUE   20      0.7324992  0.3200752
+
+Accuracy was used to select the optimal model using the largest value.   # The choice of the best model
+The final values used for the model were trials = 20, model = tree and winnow = FALSE.
+
+p <- predict(m, credit)
+table(p, credit$default)
+head(predict(m, credit))
+head(predict(m, credit, type="prob"))
+
+
+##customizing the tuning process
+
+#Using method="cv" (k-fold cross-validation)
+
+ctrl <- trainControl(method="cv", number=10,
+                     selectionFunction = "oneSE")
+
+
+
+grid <- expand.grid(.model="tree",
+                    .trials=c(1,5,10,15,20,25,30,35),
+                    .winnow=FALSE)
+
+set.seed(300)
+m <- train(default~., data=credit, method="C5.0",
+           metric="Kappa",
+           trControl=ctrl,
+           tuneGrid=grid)
+
+
+##Bagging
+#ipred패키지의 bagged decision tree
+library(ipred)
+set.seed(300)
+mybag <- bagging(default~., data=credit, nbagg=25)
+credit_pred <- predict(mybag, credit)
+table(credit_pred, credit$default)
+
+#bagged decision tree 성능추정- 10-fold CV 사용
+set.seed(300)
+ctrl <- trainControl(method="cv", number=10)
+train(default~., data=credit, method="treebag", trControl=ctrl) 
+#여기서 treebag: ipred패키지이 bagged tree function
+
+
+#caret의 bagging함수 사용
+bagctrl <- bagControl(fit=ctreeBag$fit, predict=ctreeBag$pre,
+                      aggregate=ctreeBag$aggregate)
+set.seed(300)
+treebag <- train(default~., data=credit, "bag",
+                 trControl=ctrl, bagControl=bagctrl)
+treebag
+
+
+##boost
+set.seed(300)
+library(adabag)
+m_adaboost <- boosting(default~., data=credit)
+p_adaboost <- predict(m_adaboost, credit)
+head(p_adaboost$class)
+p_adaboost$confusion
+
+set.seed(300)
+adaboost_cv <- boosting.cv(default~., data=credit)
+adaboost_cv$confusion
+library(vcd)
+Kappa(adaboost_cv$confusion)
